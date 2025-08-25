@@ -1,0 +1,341 @@
+# Flox Documentation Package - Portable FLOX.md reference guide
+version = 1
+
+[install]
+# Markdown viewers and utilities
+bat.pkg-path = "bat"  # Syntax-highlighted cat with markdown support
+glow.pkg-path = "glow"  # Beautiful terminal markdown renderer
+ripgrep.pkg-path = "ripgrep"  # Fast grep for searching
+fzf.pkg-path = "fzf"  # Fuzzy finder for interactive search
+less.pkg-path = "less"  # Pager with search
+
+[vars]
+FLOX_MD_VERSION = "1.0.0"
+FLOX_MD_DESCRIPTION = "Comprehensive Flox environment creation guide with patterns and best practices"
+
+[hook]
+on-activate = '''
+  echo "Flox Documentation Package Development Environment"
+  echo "=================================================="
+  echo ""
+  echo "Build commands:"
+  echo "  flox build flox-md      - Build the documentation package"
+  echo ""
+  echo "After building:"
+  echo "  ./result-flox-md/bin/flox-md     - Read the guide"
+  echo "  ./result-flox-md/bin/flox-search - Search the guide"
+  echo "  ./result-flox-md/bin/flox-browse - Browse sections"
+  echo "  ./result-flox-md/bin/flox-quick  - Quick reference"
+'''
+
+[profile]
+common = '''
+  # Development helpers
+  test_package() {
+    echo "Building flox-md package..."
+    if flox build flox-md; then
+      echo "✓ Build successful!"
+      echo ""
+      echo "Testing commands:"
+      ./result-flox-md/bin/flox-md --help
+      echo ""
+      echo "Try: ./result-flox-md/bin/flox-md"
+    else
+      echo "✗ Build failed"
+      return 1
+    fi
+  }
+  
+  publish_docs() {
+    local org="${1:-}"
+    if [ -z "$org" ]; then
+      echo "Usage: publish_docs <org-name>"
+      echo "Example: publish_docs barstoolbluz"
+      return 1
+    fi
+    
+    echo "Publishing flox-md to $org..."
+    flox publish -o "$org" flox-md
+  }
+'''
+
+[build]
+# Main documentation package
+[build.flox-md]
+description = "Comprehensive Flox environment creation guide"
+version = "1.0.0"
+runtime-packages = ["bat", "glow", "ripgrep", "fzf", "less"]
+command = '''
+set -euo pipefail
+
+echo "Building Flox Documentation Package..."
+
+# Create output directories
+mkdir -p "$out"/{bin,share/doc/flox-md,share/man/man1}
+
+# Copy the documentation
+cp FLOX.md "$out/share/doc/flox-md/"
+
+# Create the main reader command
+cat > "$out/bin/flox-md" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOC_ROOT="$(dirname "$(dirname "$(readlink -f "$0")")")/share/doc/flox-md"
+DOC_FILE="$DOC_ROOT/FLOX.md"
+
+# Parse command line options
+case "${1:-}" in
+  --help|-h)
+    cat << HELP
+Flox Documentation Reader
+
+Usage: flox-md [options] [section]
+
+Options:
+  --help, -h       Show this help message
+  --raw            Show raw markdown without rendering
+  --bat            Use bat for syntax highlighting
+  --glow           Use glow for rendering (default)
+  --less           Use less pager
+  --search TERM    Search for TERM in documentation
+  --list           List all sections
+  
+Section numbers:
+  0-20    Jump to specific section
+  python  Jump to Python patterns (16a)
+  cuda    Jump to CUDA patterns (16c)
+  build   Jump to build system (9)
+  service Jump to services (8)
+
+Examples:
+  flox-md                   # Read full guide with glow
+  flox-md 9                 # Jump to build system section
+  flox-md python            # Jump to Python patterns
+  flox-md --search venv     # Search for venv mentions
+  flox-md --raw | less      # View raw markdown
+HELP
+    exit 0
+    ;;
+  
+  --raw)
+    cat "$DOC_FILE"
+    ;;
+  
+  --bat)
+    command -v bat &>/dev/null && bat --language md --paging always "$DOC_FILE" || cat "$DOC_FILE"
+    ;;
+  
+  --less)
+    less "$DOC_FILE"
+    ;;
+  
+  --search)
+    shift
+    if [ -z "${1:-}" ]; then
+      echo "Error: --search requires a search term"
+      exit 1
+    fi
+    echo "Searching for: $1"
+    echo ""
+    if command -v rg &>/dev/null; then
+      rg --color always -B2 -A2 -i "$1" "$DOC_FILE" | less -R
+    else
+      grep --color=always -B2 -A2 -i "$1" "$DOC_FILE" | less -R
+    fi
+    ;;
+  
+  --list)
+    echo "Flox Documentation Sections:"
+    echo ""
+    grep "^##" "$DOC_FILE" | sed 's/^## */  /'
+    ;;
+  
+  # Section shortcuts
+  [0-9]|[0-9][0-9])
+    SECTION="$1"
+    if command -v glow &>/dev/null; then
+      awk "/^## $SECTION /{flag=1} /^## [0-9]+ /{if(flag && \$2!=$SECTION)exit} flag" "$DOC_FILE" | glow -p
+    else
+      awk "/^## $SECTION /{flag=1} /^## [0-9]+ /{if(flag && \$2!=$SECTION)exit} flag" "$DOC_FILE" | less
+    fi
+    ;;
+  
+  python|py)
+    if command -v glow &>/dev/null; then
+      awk '/^## 16a Python/{flag=1} /^## 16b/{exit} flag' "$DOC_FILE" | glow -p
+    else
+      awk '/^## 16a Python/{flag=1} /^## 16b/{exit} flag' "$DOC_FILE" | less
+    fi
+    ;;
+  
+  cuda|gpu)
+    if command -v glow &>/dev/null; then
+      awk '/^## 16c CUDA/{flag=1} /^## 17/{exit} flag' "$DOC_FILE" | glow -p
+    else
+      awk '/^## 16c CUDA/{flag=1} /^## 17/{exit} flag' "$DOC_FILE" | less
+    fi
+    ;;
+  
+  build)
+    if command -v glow &>/dev/null; then
+      awk '/^# 9 Build System/{flag=1} /^## 10/{exit} flag' "$DOC_FILE" | glow -p
+    else
+      awk '/^# 9 Build System/{flag=1} /^## 10/{exit} flag' "$DOC_FILE" | less
+    fi
+    ;;
+  
+  service|services)
+    if command -v glow &>/dev/null; then
+      awk '/^## 8 Services/{flag=1} /^# 9/{exit} flag' "$DOC_FILE" | glow -p
+    else
+      awk '/^## 8 Services/{flag=1} /^# 9/{exit} flag' "$DOC_FILE" | less
+    fi
+    ;;
+  
+  --glow|"")
+    # Default: use glow for beautiful rendering
+    if command -v glow &>/dev/null; then
+      glow -p "$DOC_FILE"
+    else
+      echo "Note: Install glow for better rendering: flox install glow"
+      less "$DOC_FILE"
+    fi
+    ;;
+  
+  *)
+    echo "Unknown option: $1"
+    echo "Try: flox-md --help"
+    exit 1
+    ;;
+esac
+EOF
+
+chmod +x "$out/bin/flox-md"
+
+# Create search command
+cat > "$out/bin/flox-search" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOC_ROOT="$(dirname "$(dirname "$(readlink -f "$0")")")/share/doc/flox-md"
+DOC_FILE="$DOC_ROOT/FLOX.md"
+
+if [ -z "${1:-}" ]; then
+  echo "Usage: flox-search <term>"
+  echo ""
+  echo "Examples:"
+  echo "  flox-search venv        # Search for venv"
+  echo "  flox-search 'pkg-path'  # Search for pkg-path"
+  echo "  flox-search build       # Search for build"
+  exit 1
+fi
+
+echo "Searching FLOX.md for: $1"
+echo "========================"
+echo ""
+
+if command -v rg &>/dev/null; then
+  rg --color always -B2 -A2 -i "$1" "$DOC_FILE" | less -R
+else
+  grep --color=always -B2 -A2 -i "$1" "$DOC_FILE" | less -R
+fi
+EOF
+
+chmod +x "$out/bin/flox-search"
+
+# Create interactive section browser
+cat > "$out/bin/flox-browse" << 'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+DOC_ROOT="$(dirname "$(dirname "$(readlink -f "$0")")")/share/doc/flox-md"
+DOC_FILE="$DOC_ROOT/FLOX.md"
+
+if ! command -v fzf &>/dev/null; then
+  echo "Error: fzf is required for browsing"
+  echo "Install with: flox install fzf"
+  exit 1
+fi
+
+# Extract sections and let user choose
+SECTION=$(grep "^##" "$DOC_FILE" | \
+  sed 's/^## *//' | \
+  fzf --preview "grep -A 20 '^## {}' '$DOC_FILE'" \
+      --preview-window=right:60% \
+      --height=80% \
+      --header="Select a section to read")
+
+if [ -n "$SECTION" ]; then
+  # Display the selected section
+  if command -v glow &>/dev/null; then
+    awk "/^## $SECTION/{flag=1} /^## [^$SECTION]/{if(flag)exit} flag" "$DOC_FILE" | glow -p
+  else
+    awk "/^## $SECTION/{flag=1} /^## [^$SECTION]/{if(flag)exit} flag" "$DOC_FILE" | less
+  fi
+fi
+EOF
+
+chmod +x "$out/bin/flox-browse"
+
+# Create quick reference card
+cat > "$out/bin/flox-quick" << 'EOF'
+#!/usr/bin/env bash
+
+cat << 'QUICK'
+FLOX QUICK REFERENCE
+====================
+
+ESSENTIAL COMMANDS
+  flox init                    Create environment
+  flox search <pkg>            Find packages
+  flox install <pkg>           Add package
+  flox activate                Enter environment
+  flox build <target>          Build package
+  flox publish <pkg>           Publish to catalog
+
+MANIFEST SECTIONS
+  [install]                    Package dependencies
+  [vars]                       Environment variables
+  [hook]                       Activation scripts (bash)
+  [profile]                    Shell functions/aliases
+  [services]                   Background services
+  [build]                      Package build definitions
+
+KEY PATHS
+  $FLOX_ENV_PROJECT           Project root (.flox location)
+  $FLOX_ENV_CACHE             Persistent cache
+  $FLOX_ENV                   Environment root (/usr equivalent)
+
+PYTHON PATTERNS
+  venv: $FLOX_ENV_CACHE/venv  Never in project root
+  uv pip install --python "$venv/bin/python" <pkg>
+
+BUILD PATTERNS
+  runtime-packages = [...]     Declare runtime deps
+  $out/bin/                    Put executables here
+  $out/share/<name>/           Put resources here
+
+SERVICE PATTERNS
+  is-daemon = true             Background service
+  shutdown.command = "..."     Cleanup command
+  vars.PORT = "8080"           Service-specific vars
+
+TIPS
+  • Hook runs in bash, not your shell
+  • Services don't inherit hook state
+  • Build hooks don't run during flox build
+  • Use pkg-group to avoid conflicts
+  • Override package vars in runtime env
+QUICK
+EOF
+
+chmod +x "$out/bin/flox-quick"
+
+echo "✓ Flox documentation package built successfully"
+echo "  Version: $FLOX_MD_VERSION"
+echo "  Commands: flox-md, flox-search, flox-browse, flox-quick"
+'''
+
+[options]
+systems = ["x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin"]
