@@ -161,6 +161,26 @@ flox edit -f /tmp/manifest.toml
 - Keep services running using `tail -f /dev/null`
 - Use `flox services status/logs/restart` to manage (must be in activated env)
 - Service commands don't inherit hook activations; explicitly source/activate what you need
+- **Network services pattern**: Always make host/port configurable via vars:
+  ```toml
+  [services.webapp]
+  command = '''exec app --host "$APP_HOST" --port "$APP_PORT"'''
+  vars.APP_HOST = "0.0.0.0"  # Network-accessible
+  vars.APP_PORT = "8080"
+  ```
+- **Service logging**: Always pipe to `$FLOX_ENV_CACHE/logs/` for debugging:
+  ```toml
+  command = '''exec app 2>&1 | tee -a "$FLOX_ENV_CACHE/logs/app.log"'''
+  ```
+- **Python venv pattern**: Services must activate venv independently:
+  ```toml
+  command = '''
+    [ -f "$FLOX_ENV_CACHE/venv/bin/activate" ] && \
+      source "$FLOX_ENV_CACHE/venv/bin/activate"
+    exec python-app "$@"
+  '''
+  ```
+- **Using packaged services**: Override package's service by redefining with same name
 - Example:
 ```toml
 [services.database]
@@ -195,6 +215,39 @@ You can mix both approaches in the same project, but package names must be uniqu
 ## 9.1 Manifest Builds
 
 Flox treats a **manifest build** as a short, deterministic Bash script that runs inside an activated environment and copies its deliverables into `$out`. Anything copied there becomes a first-class, versioned package that can later be published and installed like any other catalog artifact.
+
+**Critical insights from real-world packaging:**
+- **Build hooks don't run**: `[hook]` scripts DO NOT execute during `flox build` - only during interactive `flox activate`
+- **Guard env vars**: Always use `${FLOX_ENV_CACHE:-}` with default fallback in hooks to avoid build failures
+- **Wrapper scripts pattern**: Create launcher scripts in `$out/bin/` that set up runtime environment:
+  ```bash
+  cat > "$out/bin/myapp" << 'EOF'
+  #!/usr/bin/env bash
+  APP_ROOT="$(dirname "$(dirname "$(readlink -f "$0")")")"
+  export PYTHONPATH="$APP_ROOT/share/myapp:$PYTHONPATH"
+  exec python3 "$APP_ROOT/share/myapp/main.py" "$@"
+  EOF
+  chmod +x "$out/bin/myapp"
+  ```
+- **User config pattern**: Default to `~/.myapp/` for user configs, not `$FLOX_ENV_CACHE` (packages are immutable)
+- **Model/data directories**: Create user directories at runtime, not build time:
+  ```bash
+  mkdir -p "${MYAPP_DIR:-$HOME/.myapp}/models"
+  ```
+- **Python package strategy**: Don't bundle Python deps - include `requirements.txt` and setup script:
+  ```bash
+  # In build, create setup script:
+  cat > "$out/bin/myapp-setup" << 'EOF'
+  venv="${VENV:-$HOME/.myapp/venv}"
+  uv venv "$venv" --python python3
+  uv pip install --python "$venv/bin/python" -r "$APP_ROOT/share/myapp/requirements.txt"
+  EOF
+  ```
+- **Dual-environment workflow**: Build in `project-build/`, use package in `project/`:
+  ```bash
+  cd project-build && flox build myapp
+  cd ../project && flox install owner/myapp
+  ```
 
 
 ```toml
@@ -487,6 +540,19 @@ Flox clones your repo to a temp location and performs a clean build to ensure re
 - Package binaries uploaded to Catalog Store
 - Install with: `flox install <catalog>/<package>`
 
+### Real-world Publishing Workflow
+**Fork-based development pattern:**
+1. Fork upstream repo (e.g., `user/project` from `upstream/project`)
+2. Add `.flox/` to fork with build definitions
+3. `git push origin master` (or main - check with `git branch`)
+4. `flox publish -o username package-name`
+
+**Common gotchas:**
+- **Branch names**: Many repos use `master` not `main` - check with `git branch`
+- **Auth required**: Run `flox auth login` before first publish
+- **Clean git state**: Commit and push ALL changes before `flox publish`
+- **runtime-packages**: List only what package needs at runtime, not build deps
+
 ## 12 Layering vs Composition - Environment Design Guide
 
 | Aspect     | Layering                          | Composition                     |
@@ -631,6 +697,27 @@ docker load -i ./mycontainer.tar
 - **PyTorch CPU/GPU**: Use separate index URLs: `/whl/cpu` vs `/whl/cu124` (don't mix!)
 - **Service scripts**: Must activate venv inside service command, not rely on hook activation
 - **Cache dirs**: Set `UV_CACHE_DIR` and `PIP_CACHE_DIR` to `$FLOX_ENV_CACHE` subdirs
+- **Dependency installation flag**: Touch `$FLOX_ENV_CACHE/.deps_installed` to prevent reinstalls
+- **Service venv pattern**: Always use absolute paths and explicit activation in service commands:
+  ```toml
+  [services.myapp]
+  command = '''
+  source "$FLOX_ENV_CACHE/venv/bin/activate"
+  exec "$FLOX_ENV_CACHE/venv/bin/python" app.py
+  '''
+  ```
+- **Using Python packages from catalog**: Override data dirs to use local paths:
+  ```toml
+  [install]
+  myapp.pkg-path = "owner/myapp"
+  [vars]
+  MYAPP_DATA = "$FLOX_ENV_PROJECT"  # Use repo not ~/.myapp
+  ```
+- **Wrapping package commands**: Alias to customize behavior:
+  ```bash
+  # In [profile]
+  alias myapp-setup="MYAPP_DATA=$FLOX_ENV_PROJECT command myapp-setup"
+  ```
 
 **Note**: `uv` is installed in the Flox environment, not inside the venv. We use `uv pip install --python "$venv/bin/python"` so that `uv` targets the venv's Python interpreter.
 
@@ -689,3 +776,4 @@ gawk.systems = ["x86_64-darwin", "aarch64-darwin"]
 bashInteractive.pkg-path = "bashInteractive"
 bashInteractive.systems = ["x86_64-darwin", "aarch64-darwin"]
 ```
+
