@@ -54,8 +54,10 @@
 
 ## 0 Working Style & Structure
 - Use **modular, idempotent bash functions** in hooks
+- Never, ever use absolute paths. Flox environments are designed to be reproducible. Use Flox's environment variables (see §2, "Flox Basics") instead
+- I REPEAT: NEVER, EVER USE ABSOLUTE PATHS. Don't do it. Use `$FLOX_ENV` for environment-specific runtime dependencies; use `$FLOX_ENV_PROJECT` for the project directory. See §2, "Flox Basics"
 - Name functions descriptively (e.g., `setup_postgres()`)
-- Consider using **gum** for styled output when creating environments for interactive use; this is usually an anti-pattern in CI
+- Consider using **gum** for styled output when creating environments for interactive use; this is an anti-pattern in CI
 - Put persistent data/configs in `$FLOX_ENV_CACHE`
 - Return to `$FLOX_ENV_PROJECT` at end of hooks
 - Use `mktemp` for temp files, clean up immediately
