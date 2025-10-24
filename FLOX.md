@@ -702,25 +702,111 @@ fi
 - **Both**: Compose base, layer tools on top
 
 ## 13 Containerization
+
+### Basic Usage
 ```bash
+# Export to file
 flox containerize -f ./mycontainer.tar
 docker load -i ./mycontainer.tar
+
+# Export directly to runtime (auto-detects docker/podman)
+flox containerize --runtime docker
+
+# Pipe to stdout
+flox containerize -f - | docker load
+
+# Tag container
+flox containerize --tag v1.0 -f - | docker load
 ```
-- Configure in `[containerize.config]`:
-  - user, ports, cmd, volumes, working-dir
 
-## 13a Common Best Practices
-- Use Flox to get all required packages and dependencies; if you cannot find/link against a dependency provided by Flox (e.g., library headers), ask the user what to do
-- Use `FLOX_ENV` to access or link against runtime dependencies that are specific to, and made available by, packages installed in the Flox environment
+### How Containers Behave
+**Containers activate the Flox environment on startup** (like `flox activate`):
+- **Interactive**: `docker run -it <image>` → Bash shell with environment activated
+- **Non-interactive**: `docker run <image> <cmd>` → Runs command with environment activated (like `flox activate -- <cmd>`)
+- All packages, variables, and hooks are available inside the container
 
-## 13b Common Anti-Patterns
-- Don't store secrets in manifest
-- Don't use `exit` in hooks (use `return` instead)
-- Avoid generic function names in composed envs
-- Don't rely on system-wide packages; always get packages from Flox
-- Don't assume all packages work together without specifying pkg-groups (**but see also §10 for special build implications**)
-- Don't hard-code Nix store paths (e.g., `/nix/store/...`, ` /home/<user>/<path>/.flox/run/x86_64-<flox_environment_name>.dev`) in any logic or configurations or definitions you create; use `FLOX_ENV/<path>` instead
-- Don't use variable expansion in service commands; use literal values or handle expansion in a wrapper script
+### Command Options
+```bash
+flox containerize
+  [-f <file>]           # Output file (- for stdout); defaults to {name}-container.tar
+  [--runtime <runtime>] # docker/podman (auto-detects if not specified)
+  [--tag <tag>]         # Container tag (e.g., v1.0, latest)
+  [-d <path>]           # Path to .flox/ directory
+  [-r <owner/name>]     # Remote environment from FloxHub
+```
+
+### Manifest Configuration
+Configure container in `[containerize.config]` (experimental):
+
+```toml
+[containerize.config]
+user = "appuser"                    # Username or uid:gid format
+exposed-ports = ["8080/tcp"]        # Ports to expose (tcp/udp/default:tcp)
+cmd = ["python", "app.py"]          # Command to run (receives activated env)
+volumes = ["/data", "/config"]      # Mount points for persistent data
+working-dir = "/app"                # Working directory
+labels = { version = "1.0" }        # Arbitrary metadata
+stop-signal = "SIGTERM"             # Signal to stop container
+```
+
+**Note**: Flox sets an entrypoint that activates the environment, then runs `cmd` inside that activation.
+
+### Complete Workflow Example
+```bash
+# Create environment
+flox init
+flox install python311 flask
+
+# Configure for container
+cat >> .flox/env/manifest.toml << 'EOF'
+[containerize.config]
+exposed-ports = ["5000/tcp"]
+cmd = ["python", "-m", "flask", "run", "--host=0.0.0.0"]
+working-dir = "/app"
+EOF
+
+# Build and run
+flox containerize -f - | docker load
+docker run -p 5000:5000 -v $(pwd):/app <container-id>
+```
+
+### Platform-Specific Notes
+**macOS**: 
+- Requires docker/podman runtime (uses proxy container for builds)
+- May prompt for file sharing permissions
+- Creates `flox-nix` volume for caching (safe to remove when not building: `docker volume rm flox-nix`)
+
+**Linux**: Direct image creation without proxy
+
+### Common Patterns
+
+**Service containers**:
+```toml
+[services.web]
+command = "python -m http.server 8000"
+
+[containerize.config]
+exposed-ports = ["8000/tcp"]
+cmd = []  # Service starts automatically
+```
+
+**Multi-stage pattern** (build in one env, run in another):
+```bash
+# Build environment with all dev tools
+flox activate -d ./build-env -- flox build myapp
+
+# Runtime environment with minimal deps
+cd ./runtime-env
+flox install myapp
+flox containerize --tag production
+```
+
+**Remote environment containers**:
+```bash
+# Containerize shared team environment
+flox containerize -r team/python-ml --tag latest
+```
+
 
 ## 14 Environment Variable Convention Example
 
