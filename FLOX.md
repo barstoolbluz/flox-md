@@ -108,6 +108,8 @@ flox containerize               # Export as OCI image
 
 ## 4b Common Pitfalls
 - Hooks run EVERY activation (keep them fast/idempotent)
+- Hook functions are not available to users in the interactive shell; use `[profile]` for user-invokable commands/aliases
+- Profile code runs for each layered/composed environment; keep auto-run display logic in `[hook]` to avoid repetition
 - Services see fresh environment (no preserved state between restarts)
 - Build commands can't access network in pure mode (pre-fetch deps)
 - Manifest syntax errors prevent ALL flox commands from working
@@ -664,6 +666,7 @@ setup_postgres() {
 - No overlapping vars, services, or function names
 - Use explicit, namespaced naming (e.g., `postgres_init` not `init`)
 - Minimal hook logic (composed envs run ALL hooks)
+- Avoid auto-run logic in `[profile]` (runs once per layer/composition; help displays will repeat); see §4b
 - Test composability: `flox activate` each env standalone first
 
 **CUDA composition example:** Compose base CUDA, math libraries, and ML frameworks into reproducible stack:
