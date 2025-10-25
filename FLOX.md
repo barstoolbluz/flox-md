@@ -260,7 +260,7 @@ Manifest builds:
 - Can run inside a sandbox (using `sandbox = "pure"`) for reproducible builds;
 - Are best for getting going fast with existing projects.
 
-**Nix expression builds( guarantee build-time reproducibility because they're both isolated and purely functional. Their learning curve is steeper because they require proficiency with the Nix language.
+**Nix expression builds** guarantee build-time reproducibility because they're both isolated and purely functional. Their learning curve is steeper because they require proficiency with the Nix language.
 
 Nix expression builds: 
 
