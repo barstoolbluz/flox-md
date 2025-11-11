@@ -8,11 +8,11 @@
 - **Understand the manifest structure** → §4 (Manifest Structure)
 
 ### Common Development Tasks
-- **Set up Python with virtual environments** → §16a (Python patterns)
-- **Set up C/C++ development** → §16b (C/C++ environments)
-- **Set up Node.js projects** → §16c (Node.js patterns)
-- **Set up CUDA/GPU development** → §16d (CUDA environments)
-- **Handle package conflicts** → §5 (priority/pkg-group), §15 (Quick Tips)
+- **Set up Python with virtual environments** → §17a (Python patterns)
+- **Set up C/C++ development** → §17b (C/C++ environments)
+- **Set up Node.js projects** → §17c (Node.js patterns)
+- **Set up CUDA/GPU development** → §17d (CUDA environments)
+- **Handle package conflicts** → §5 (priority/pkg-group), §16 (Quick Tips)
 
 ### Services & Background Processes
 - **Run a database or web server** → §8 (Services)
@@ -32,12 +32,12 @@
 - **Design environments for both** → §12 (Dual-purpose environments)
 
 ### Platform-Specific
-- **Handle Linux-only packages** → §5 (systems attribute), §16d (CUDA)
-- **Handle macOS-specific frameworks** → §17 (Platform-Specific Pattern)
-- **Support multiple platforms** → §16d (Cross-platform GPU), §17 (Platform patterns)
+- **Handle Linux-only packages** → §5 (systems attribute), §17d (CUDA)
+- **Handle macOS-specific frameworks** → §18 (Platform-Specific Pattern)
+- **Support multiple platforms** → §17d (Cross-platform GPU), §18 (Platform patterns)
 
 ### Troubleshooting
-- **Fix package conflicts** → §5 (priority), §15 (Conflicts tip)
+- **Fix package conflicts** → §5 (priority), §16 (Conflicts tip)
 - **Debug hooks not working** → §6 (Best Practices), §0 (Working Style)
 - **Understand build vs runtime** → §9.1 (Build hooks don't run)
 - **Fix service startup issues** → §8 (Service patterns)
@@ -46,6 +46,7 @@
 - **Create multi-stage builds** → §9.5 (Multi-Stage Examples)
 - **Minimize runtime dependencies** → §9.6 (Trimming Dependencies)
 - **Containerize environments** → §13 (Containerization)
+- **Automate with CI/CD pipelines** → §14 (CI/CD Integration)
 - **Edit manifests programmatically** → §7 (Non-Interactive Editing)
 
 ### Anti-Patterns to Avoid
@@ -170,7 +171,7 @@ example.priority = 3                        # Optional: resolve file conflicts (
 - Resolves file conflicts between packages
 - Default: 5
 - Lower number = higher priority wins conflicts
-- **Critical for CUDA packages** (see §16d)
+- **Critical for CUDA packages** (see §17d)
 
 
 ### Practical Examples
@@ -642,7 +643,7 @@ command = "..."
 - Document what the environment provides/expects
 - Keep hooks fast and idempotent
 
-**CUDA layering example:** Layer debugging tools (`flox activate -r team/cuda-debugging`) on base CUDA environment for ad-hoc development (see §16d).
+**CUDA layering example:** Layer debugging tools (`flox activate -r team/cuda-debugging`) on base CUDA environment for ad-hoc development (see §17d).
 
 ### Creating Composition-Optimized Environments
 **Design for clean merging at build time:**
@@ -810,8 +811,123 @@ flox containerize --tag production
 flox containerize -r team/python-ml --tag latest
 ```
 
+## 14 CI/CD Integration
 
-## 14 Environment Variable Convention Example
+Same environment locally and in CI. Cross-platform, reproducible by default. Commit `.flox/env/manifest.toml` and `.flox/env.json` to source control.
+
+### Platform Support
+
+| Platform | Method | Usage |
+|----------|--------|-------|
+| GitHub Actions | `flox/install-flox-action` + `flox/activate-action` | Declarative |
+| CircleCI | `flox/orb@1.0.0` | `flox/install` + `flox/activate` |
+| GitLab | `ghcr.io/flox/flox:latest` container | Direct CLI |
+| Generic | Install from flox.dev | Shell scripts |
+
+### GitHub Actions
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flox/install-flox-action@v2
+      - uses: flox/activate-action@v1
+        with:
+          command: npm run build
+```
+
+### CircleCI
+```yaml
+orbs:
+  flox: flox/orb@1.0.0
+jobs:
+  build:
+    steps:
+      - checkout
+      - flox/install
+      - flox/activate:
+          command: npm run build
+```
+
+### GitLab / Generic Shell
+```yaml
+# .gitlab-ci.yml
+image: ghcr.io/flox/flox:latest
+build:
+  script:
+    - eval "$(flox activate)"
+    - npm run build
+```
+
+**Shell pattern** (complex scripts, loops):
+```bash
+eval "$(flox activate)"
+# All subsequent commands run in environment
+```
+
+**Subprocess pattern** (single commands):
+```bash
+flox activate -- npm run build
+```
+
+### Authentication (Private Environments)
+
+**When required:** `flox activate -r team/private`, `flox publish`, `flox push/pull --remote`
+
+**Setup:** Create service credentials at https://flox.dev/docs/tutorials/ci-cd/, store as `FLOXHUB_CLIENT_ID` and `FLOXHUB_CLIENT_SECRET` secrets.
+
+**GitHub Actions:**
+```yaml
+- name: Auth FloxHub
+  run: |
+    export FLOX_FLOXHUB_TOKEN=$(
+      curl --fail --request POST \
+        --url https://auth.flox.dev/oauth/token \
+        --header 'content-type: application/x-www-form-urlencoded' \
+        --data "client_id=${{ secrets.FLOXHUB_CLIENT_ID }}" \
+        --data "audience=https://hub.flox.dev/api" \
+        --data "grant_type=client_credentials" \
+        --data "client_secret=${{ secrets.FLOXHUB_CLIENT_SECRET }}" \
+          | jq -e .access_token -r)
+    flox auth status
+    echo "FLOX_FLOXHUB_TOKEN=$FLOX_FLOXHUB_TOKEN" >> $GITHUB_ENV
+```
+
+**Critical:** `audience` must be exactly `https://hub.flox.dev/api`. Token persists via `$GITHUB_ENV` (Actions), `$BASH_ENV` (CircleCI), or `variables:` (GitLab).
+
+### Best Practices
+- Pin versions in CI: `version = "1.2.3"` not `"^1.2"`
+- Disable metrics: `FLOX_DISABLE_METRICS="true"`
+- Cache `~/.cache/flox` keyed on manifest checksum
+- Use `sandbox = "pure"` for published packages (§9.2)
+- Multi-arch: Same manifest works x86_64/arm64; use matrix builds
+- Auth per-job: Tokens expire; don't cache between jobs
+
+### Common Patterns
+```yaml
+# Containerize and push
+- flox/activate-action:
+    command: flox containerize --runtime docker --tag v1.0
+
+# Multi-platform
+strategy:
+  matrix:
+    os: [ubuntu-latest, macos-latest]
+
+# Conditional publish (main branch only)
+if: github.ref == 'refs/heads/main'
+```
+
+### Common Gotchas
+- GitHub Actions: Must `flox/install-flox-action` before `flox/activate-action`
+- Auth: Token required BEFORE accessing private envs; fails silently otherwise
+- Token persistence: Use platform-specific env export (`$GITHUB_ENV`, `$BASH_ENV`)
+- Manifest changes: Commit `.flox/env.json` after `flox install`; CI doesn't auto-update
+- Services: Use `flox activate -s` for background services (§8)
+- Build hooks don't run during `flox build` (§9.1)
+
+## 15 Environment Variable Convention Example
 
 - Use variables like `POSTGRES_HOST`, `POSTGRES_PORT` to define where services run.
 - These store connection details *separately*:
@@ -823,17 +939,17 @@ flox containerize -r team/python-ml --tag latest
   ```
 - Use consistent naming across services so the meaning is clear to any system or person reading the variables.
 
-## 15 Quick Tips for [install] Section
-- **Tricky Dependencies**: If we need `libstdc++`, we get this from the `gcc-unwrapped` package, not from `gcc`; if we need to have both in the same environment, we use either package groups or assign priorities. (See **`Conflicts`**, below); also, if user is working with python and requests `uv`, they typically do not mean `uvicorn`; clarify which package user wants. 
-- **Conflicts**: If packages conflict, use different `pkg-group` values or adjust `priority`. **CUDA packages require explicit priorities** (see §16d).
+## 16 Quick Tips for [install] Section
+- **Tricky Dependencies**: If we need `libstdc++`, we get this from the `gcc-unwrapped` package, not from `gcc`; if we need to have both in the same environment, we use either package groups or assign priorities. (See **`Conflicts`**, below); also, if user is working with python and requests `uv`, they typically do not mean `uvicorn`; clarify which package user wants.
+- **Conflicts**: If packages conflict, use different `pkg-group` values or adjust `priority`. **CUDA packages require explicit priorities** (see §17d).
 - **Versions**: Start loose (`"^1.0"`), tighten if needed (`"1.2.3"`)
 - **Platforms**: Only restrict `systems` when package is platform-specific. **CUDA is Linux-only**: `["aarch64-linux", "x86_64-linux"]`
 - **Naming**: Install ID can differ from pkg-path (e.g., `gcc.pkg-path = "gcc13"`)
 - **Search**: Use `flox search` to find correct pkg-paths before installing
 
-## 16 Language-Specific Dev Patterns
+## 17 Language-Specific Dev Patterns
 
-## 16a Python and Python Virtual Environments
+## 17a Python and Python Virtual Environments
   - **venv creation pattern**: Always check existence before activation - `uv venv` may not complete synchronously:
     ```bash
     if [ ! -d "$venv" ]; then
@@ -848,7 +964,7 @@ flox containerize -r team/python-ml --tag latest
   **uv with venv**: Use `uv pip install --python "$venv/bin/python"` NOT `"$venv/bin/python" -m uv`
   **Service commands**: Use venv Python directly: $FLOX_ENV_CACHE/venv/bin/python not python
 - **Activation**: Always `source "$venv/bin/activate"` before pip/uv operations
-- **PyTorch CUDA**: Install with `--index-url https://download.pytorch.org/whl/cu124` for GPU support (see §16d)
+- **PyTorch CUDA**: Install with `--index-url https://download.pytorch.org/whl/cu124` for GPU support (see §17d)
 - **PyTorch gotcha**: Needs `gcc-unwrapped` for libstdc++.so.6, not just `gcc`
 - **PyTorch CPU/GPU**: Use separate index URLs: `/whl/cpu` vs `/whl/cu124` (don't mix!)
 - **Service scripts**: Must activate venv inside service command, not rely on hook activation
@@ -877,7 +993,7 @@ flox containerize -r team/python-ml --tag latest
 
 **Note**: `uv` is installed in the Flox environment, not inside the venv. We use `uv pip install --python "$venv/bin/python"` so that `uv` targets the venv's Python interpreter.
 
-## 16b C/C++ Development Environments
+## 17b C/C++ Development Environments
 - **Package Names**: `gbenchmark` not `benchmark`, `catch2_3` for Catch2, `gcc13`/`clang_18` for specific versions
 - **System Constraints**: Linux-only tools need explicit systems: `valgrind.systems = ["x86_64-linux", "aarch64-linux"]`
 - **Essential Groups**: Separate `compilers`, `build`, `debug`, `testing`, `libraries` groups prevent conflicts
@@ -889,7 +1005,7 @@ gcc-unwrapped.priority = 5  # Lower priority to avoid conflicts
 gcc-unwrapped.pkg-group = "libraries"
 ```
 
-## 16c Node.js Development Environments
+## 17c Node.js Development Environments
 - **Package managers**: Install `nodejs` (includes npm); add `yarn` or `pnpm` separately if needed
 - **Version pinning**: Use `version = "^20.0"` for LTS, or exact versions for reproducibility
 - **Global tools pattern**: Use `npx` for one-off tools, install commonly-used globals in manifest
@@ -899,7 +1015,7 @@ gcc-unwrapped.pkg-group = "libraries"
   command = '''exec npm run dev -- --host "$DEV_HOST" --port "$DEV_PORT"'''
   ```
 
-## 16d CUDA Development Environments
+## 17d CUDA Development Environments
 
 ### Prerequisites & Authentication
 - Sign up for early access at https://flox.dev, authenticate with `flox auth login`
@@ -1019,7 +1135,7 @@ setup_cuda_venv() {
 }
 ```
 
-## 17 **Platform-Specific Pattern**:
+## 18 **Platform-Specific Pattern**:
 ```toml
 # Darwin-specific frameworks and tools
 IOKit.pkg-path = "darwin.apple_sdk.frameworks.IOKit"
@@ -1047,4 +1163,4 @@ bashInteractive.pkg-path = "bashInteractive"
 bashInteractive.systems = ["x86_64-darwin", "aarch64-darwin"]
 ```
 
-**Note**: CUDA is Linux-only (see §16d); use Metal-accelerated packages on Darwin when available.
+**Note**: CUDA is Linux-only (see §17d); use Metal-accelerated packages on Darwin when available.
