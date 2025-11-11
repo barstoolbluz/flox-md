@@ -725,9 +725,10 @@ flox containerize --tag v1.0 -f - | docker load
 
 ### How Containers Behave
 **Containers activate the Flox environment on startup** (like `flox activate`):
-- **Interactive**: `docker run -it <image>` → Bash shell with environment activated
-- **Non-interactive**: `docker run <image> <cmd>` → Runs command with environment activated (like `flox activate -- <cmd>`)
+- **Interactive**: `docker run -it <image>` → Bash **subshell** with environment activated after hook runs
+- **Non-interactive**: `docker run <image> <cmd>` → Runs command **without subshell** (like `flox activate -- <cmd>`)
 - All packages, variables, and hooks are available inside the container
+- Flox sets an entrypoint that activates the environment; `cmd` runs inside that activation
 
 ### Command Options
 ```bash
@@ -740,20 +741,22 @@ flox containerize
 ```
 
 ### Manifest Configuration
-Configure container in `[containerize.config]` (experimental):
+
+**Warning**: `[containerize.config]` is **experimental** and its behavior is subject to change.
+
+Configure container in `[containerize.config]`:
 
 ```toml
 [containerize.config]
 user = "appuser"                    # Username or uid:gid format
-exposed-ports = ["8080/tcp"]        # Ports to expose (tcp/udp/default:tcp)
-cmd = ["python", "app.py"]          # Command to run (receives activated env)
+                                     # Auto-creates /etc/passwd and /etc/groups entries (no manual useradd needed)
+exposed-ports = ["8080/tcp"]        # Ports to expose (tcp/udp; default: tcp)
+cmd = ["python", "app.py"]          # Default command (overridable at container runtime; receives activated env)
 volumes = ["/data", "/config"]      # Mount points for persistent data
-working-dir = "/app"                # Working directory
-labels = { version = "1.0" }        # Arbitrary metadata
-stop-signal = "SIGTERM"             # Signal to stop container
+working-dir = "/app"                # Working directory (overridable at container runtime)
+labels = { version = "1.0" }        # Arbitrary metadata (must follow OCI annotation rules)
+stop-signal = "SIGTERM"             # Signal to stop container (must follow OCI annotation rules)
 ```
-
-**Note**: Flox sets an entrypoint that activates the environment, then runs `cmd` inside that activation.
 
 ### Complete Workflow Example
 ```bash
@@ -775,10 +778,15 @@ docker run -p 5000:5000 -v $(pwd):/app <container-id>
 ```
 
 ### Platform-Specific Notes
-**macOS**: 
-- Requires docker/podman runtime (uses proxy container for builds)
-- May prompt for file sharing permissions
-- Creates `flox-nix` volume for caching (safe to remove when not building: `docker volume rm flox-nix`)
+**macOS**:
+- **Requires** docker/podman runtime (uses proxy container for builds)
+- May prompt for file sharing permissions during first build
+- Creates `flox-nix` volume for caching build artifacts
+- **Cleanup**: Remove volume when no `flox containerize` command is running:
+  ```bash
+  docker volume rm flox-nix    # for Docker
+  podman volume rm flox-nix    # for Podman
+  ```
 
 **Linux**: Direct image creation without proxy
 
@@ -809,6 +817,38 @@ flox containerize --tag production
 ```bash
 # Containerize shared team environment
 flox containerize -r team/python-ml --tag latest
+```
+
+### Container Execution Patterns
+
+**Interactive with automatic cleanup**:
+```bash
+$ flox init
+$ flox install hello
+$ flox containerize -f - | docker load
+$ docker run --rm -it <container-id>
+[floxenv] $ hello
+Hello, world!
+```
+
+**Non-interactive command** (no subshell):
+```bash
+$ flox containerize -f - | docker load
+$ docker run <container-id> hello
+Hello, world
+```
+
+**Tagged container access**:
+```bash
+$ flox containerize --tag v1 -f - | docker load
+$ docker run --rm -it <container-name>:v1
+[floxenv] $ hello
+Hello, world!
+```
+
+**Custom docker path** (when docker not in PATH):
+```bash
+$ flox containerize -f - | /path/to/docker load
 ```
 
 ## 14 CI/CD Integration
