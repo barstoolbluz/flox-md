@@ -7,12 +7,18 @@
 - **Find and install packages** → §3 (flox search/install), §5 (install section details)
 - **Understand the manifest structure** → §4 (Manifest Structure)
 
-### Common Development Tasks
-- **Set up Python with virtual environments** → §18a (Python patterns)
-- **Set up C/C++ development** → §18b (C/C++ environments)
-- **Set up Node.js projects** → §18c (Node.js patterns)
-- **Set up CUDA/GPU development** → §18d (CUDA environments)
-- **Handle package conflicts** → §5 (priority/pkg-group), §17 (Quick Tips)
+### Kubernetes Deployment
+- **Deploy imageless Kubernetes pods** → §14 (Kubernetes Deployment)
+- **Configure FloxHub environments** → §14 (Prerequisites & Setup)
+- **Set up local K8s testing** → §14 (kind/colima/k3s patterns)
+- **Deploy from local → CI → prod** → §14 (Workflow examples)
+- **Update pod environments** → §14 (Redeploy patterns)
+
+### Container Development
+- **Build OCI container images** → §12 (Containerization)
+- **Create multi-stage container builds** → §12 (Multi-stage patterns)
+- **Publish container images** → §10 (Publishing), §12 (Container publishing)
+- **Test containers locally** → §12 (Usage examples)
 
 ### Services & Background Processes
 - **Run a database or web server** → §8 (Services)
@@ -22,38 +28,34 @@
 ### Building & Publishing
 - **Package my application** → §9.1 (Manifest Builds)
 - **Create reproducible builds** → §9.2 (Sandbox modes)
-- **Use Nix expressions** → §10 (Nix Expression Builds)
-- **Publish to team catalog** → §11 (Publishing)
+- **Publish to team catalog** → §10 (Publishing)
 - **Package configuration/assets** → §9.9 (Beyond Code)
 
-### Environment Composition
-- **Layer multiple environments** → §12 (Layering pattern)
-- **Compose reusable environments** → §12 (Composition pattern)
-- **Design environments for both** → §12 (Dual-purpose environments)
+### CI/CD Integration
+- **Automate with GitHub Actions** → §13 (GitHub Actions examples)
+- **Set up CircleCI pipelines** → §13 (CircleCI examples)
+- **Use GitLab CI** → §13 (GitLab patterns)
+- **Ensure reproducibility in CI** → §13 (CI best practices)
 
-### Platform-Specific
-- **Handle Linux-only packages** → §5 (systems attribute), §18d (CUDA)
-- **Handle macOS-specific frameworks** → §19 (Platform-Specific Pattern)
-- **Support multiple platforms** → §18d (Cross-platform GPU), §19 (Platform patterns)
+### Environment Composition
+- **Layer multiple environments** → §11 (Layering pattern)
+- **Compose reusable environments** → §11 (Composition pattern)
+- **Design environments for both** → §11 (Dual-purpose environments)
 
 ### Troubleshooting
-- **Fix package conflicts** → §5 (priority), §17 (Conflicts tip)
+- **Fix package conflicts** → §5 (priority), §16 (Quick Tips)
 - **Debug hooks not working** → §6 (Best Practices), §0 (Working Style)
 - **Understand build vs runtime** → §9.1 (Build hooks don't run)
 - **Fix service startup issues** → §8 (Service patterns)
+- **Debug K8s pod issues** → §14 (Kubernetes troubleshooting)
 
 ### Advanced Topics
 - **Create multi-stage builds** → §9.5 (Multi-Stage Examples)
 - **Minimize runtime dependencies** → §9.6 (Trimming Dependencies)
 - **Edit manifests programmatically** → §7 (Non-Interactive Editing)
 
-### Deployment Patterns
-- **Build OCI container images** → §13 (Containerization)
-- **Automate with CI/CD pipelines** → §14 (CI/CD Integration)
-- **Deploy imageless Kubernetes pods** → §15 (Kubernetes Deployment)
-
 ### Anti-Patterns to Avoid
-- **What NOT to do** → §13b (Common Anti-Patterns)
+- **What NOT to do** → §12b (Common Anti-Patterns)
 - **Common pitfalls** → §4b (Common Pitfalls)
 
 ## 0 Working Style & Structure
@@ -174,7 +176,7 @@ example.priority = 3                        # Optional: resolve file conflicts (
 - Resolves file conflicts between packages
 - Default: 5
 - Lower number = higher priority wins conflicts
-- **Critical for CUDA packages** (see §18d)
+- **Critical for CUDA packages**
 
 
 ### Practical Examples
@@ -251,6 +253,7 @@ vars.PGPASSWORD = "super-secret"
 vars.PGDATABASE = "mydb"
 vars.PGPORT = "9001"
 ```
+
 
 # 9 Build System — Authoring and Running Reliable Packages with flox build
 
@@ -496,70 +499,8 @@ Teams install these packages and reference them via `$FLOX_ENV/etc/nginx.conf` o
 
 With these mechanics in place, a Flox build becomes an auditable, repeatable unit: same input sources, same declared toolchain, same closure every time—no matter where it runs.
 
-## 10 Nix Expression Builds
 
-You can write a Nix expression instead of (or in addition to) defining a manifest build.
-
-Put `*.nix` build files in `.flox/pkgs/` for Nix expression builds. Git add all files before building.
-
-### File Naming
-- `hello.nix` → package named `hello`
-- `hello/default.nix` → package named `hello`
-
-### Common Patterns
-
-**Shell Script**
-```nix
-{writeShellApplication, curl}:
-writeShellApplication {
-  name = "my-ip";
-  runtimeInputs = [ curl ];
-  text = ''curl icanhazip.com'';
-}
-```
-
-**Your Project**
-```nix
-{ rustPlatform, lib }:
-rustPlatform.buildRustPackage {
-  pname = "my-app";
-  version = "0.1.0";
-  src = ../../.;
-  cargoLock.lockFile = "${src}/Cargo.lock";
-}
-```
-
-**Update Version**
-```nix
-{ hello, fetchurl }:
-hello.overrideAttrs (finalAttrs: _: {
-  version = "2.12.2";
-  src = fetchurl {
-    url = "mirror://gnu/hello/hello-${finalAttrs.version}.tar.gz";
-    hash = "sha256-WpqZbcKSzCTc9BHO6H6S9qrluNE72caBm0x6nc4IGKs=";
-  };
-})
-```
-
-**Apply Patches**
-```nix
-{ hello }:
-hello.overrideAttrs (oldAttrs: {
-  patches = (oldAttrs.patches or []) ++ [ ./my.patch ];
-})
-```
-
-### Hash Generation
-1. Use `hash = "";`
-2. Run `flox build`
-3. Copy hash from error message
-
-### Commands
-- `flox build` - build all
-- `flox build .#hello` - build specific
-- `git add .flox/pkgs/*` - track files
-
-## 11 Publishing to Flox Catalog
+## 10 Publishing to Flox Catalog
 
 ### Prerequisites
 Before publishing:
@@ -614,7 +555,8 @@ Flox clones your repo to a temp location and performs a clean build to ensure re
 - **Clean git state**: Commit and push ALL changes before `flox publish`
 - **runtime-packages**: List only what package needs at runtime, not build deps
 
-## 12 Layering vs Composition - Environment Design Guide
+
+## 11 Layering vs Composition - Environment Design Guide
 
 | Aspect     | Layering                          | Composition                     |
 |------------|-----------------------------------|---------------------------------|
@@ -646,7 +588,7 @@ command = "..."
 - Document what the environment provides/expects
 - Keep hooks fast and idempotent
 
-**CUDA layering example:** Layer debugging tools (`flox activate -r team/cuda-debugging`) on base CUDA environment for ad-hoc development (see §18d).
+**Layering example:** Layer debugging tools (`flox activate -r team/debugging-tools`) on base development environment for ad-hoc development.
 
 ### Creating Composition-Optimized Environments
 **Design for clean merging at build time:**
@@ -708,7 +650,8 @@ fi
 - **Compose**: `[include] environments = [{ remote = "team/postgres" }]`
 - **Both**: Compose base, layer tools on top
 
-## 13 Containerization
+
+## 12 Containerization
 
 ### Basic Usage
 ```bash
@@ -856,7 +799,8 @@ $ flox containerize -f - | /path/to/docker load
 
 **Kubernetes deployment**: For deploying Flox environments to Kubernetes clusters without building images, see §15 (Kubernetes Deployment).
 
-## 14 CI/CD Integration
+
+## 13 CI/CD Integration
 
 Same environment locally and in CI. Cross-platform, reproducible by default. Commit `.flox/env/manifest.toml` and `.flox/env.json` to source control.
 
@@ -972,7 +916,8 @@ if: github.ref == 'refs/heads/main'
 - Services: Use `flox activate -s` for background services (§8)
 - Build hooks don't run during `flox build` (§9.1)
 
-## 15 Kubernetes Deployment
+
+## 14 Kubernetes Deployment
 
 Deploy Flox environments to Kubernetes clusters using imageless containers - from local testing through production.
 
@@ -1327,7 +1272,8 @@ Store tokens in secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.) and
 
 See https://flox.dev/docs/k8s for platform-specific setup guides.
 
-## 16 Environment Variable Convention Example
+
+## 15 Environment Variable Convention Example
 
 - Use variables like `POSTGRES_HOST`, `POSTGRES_PORT` to define where services run.
 - These store connection details *separately*:
@@ -1339,228 +1285,12 @@ See https://flox.dev/docs/k8s for platform-specific setup guides.
   ```
 - Use consistent naming across services so the meaning is clear to any system or person reading the variables.
 
-## 17 Quick Tips for [install] Section
+
+## 16 Quick Tips for [install] Section
 - **Tricky Dependencies**: If we need `libstdc++`, we get this from the `gcc-unwrapped` package, not from `gcc`; if we need to have both in the same environment, we use either package groups or assign priorities. (See **`Conflicts`**, below); also, if user is working with python and requests `uv`, they typically do not mean `uvicorn`; clarify which package user wants.
-- **Conflicts**: If packages conflict, use different `pkg-group` values or adjust `priority`. **CUDA packages require explicit priorities** (see §18d).
+- **Conflicts**: If packages conflict, use different `pkg-group` values or adjust `priority`. For packages with version conflicts, use explicit priorities.
 - **Versions**: Start loose (`"^1.0"`), tighten if needed (`"1.2.3"`)
 - **Platforms**: Only restrict `systems` when package is platform-specific. **CUDA is Linux-only**: `["aarch64-linux", "x86_64-linux"]`
 - **Naming**: Install ID can differ from pkg-path (e.g., `gcc.pkg-path = "gcc13"`)
 - **Search**: Use `flox search` to find correct pkg-paths before installing
 
-## 18 Language-Specific Dev Patterns
-
-## 18a Python and Python Virtual Environments
-  - **venv creation pattern**: Always check existence before activation - `uv venv` may not complete synchronously:
-    ```bash
-    if [ ! -d "$venv" ]; then
-      uv venv "$venv" --python python3
-    fi
-    # Guard activation - venv creation might not be complete
-    if [ -f "$venv/bin/activate" ]; then
-      source "$venv/bin/activate"
-    fi
-	```
-  **venv location**: Always use $FLOX_ENV_CACHE/venv - survives environment rebuilds
-  **uv with venv**: Use `uv pip install --python "$venv/bin/python"` NOT `"$venv/bin/python" -m uv`
-  **Service commands**: Use venv Python directly: $FLOX_ENV_CACHE/venv/bin/python not python
-- **Activation**: Always `source "$venv/bin/activate"` before pip/uv operations
-- **PyTorch CUDA**: Install with `--index-url https://download.pytorch.org/whl/cu124` for GPU support (see §18d)
-- **PyTorch gotcha**: Needs `gcc-unwrapped` for libstdc++.so.6, not just `gcc`
-- **PyTorch CPU/GPU**: Use separate index URLs: `/whl/cpu` vs `/whl/cu124` (don't mix!)
-- **Service scripts**: Must activate venv inside service command, not rely on hook activation
-- **Cache dirs**: Set `UV_CACHE_DIR` and `PIP_CACHE_DIR` to `$FLOX_ENV_CACHE` subdirs
-- **Dependency installation flag**: Touch `$FLOX_ENV_CACHE/.deps_installed` to prevent reinstalls
-- **Service venv pattern**: Always use absolute paths and explicit activation in service commands:
-  ```toml
-  [services.myapp]
-  command = '''
-  source "$FLOX_ENV_CACHE/venv/bin/activate"
-  exec "$FLOX_ENV_CACHE/venv/bin/python" app.py
-  '''
-  ```
-- **Using Python packages from catalog**: Override data dirs to use local paths:
-  ```toml
-  [install]
-  myapp.pkg-path = "owner/myapp"
-  [vars]
-  MYAPP_DATA = "$FLOX_ENV_PROJECT"  # Use repo not ~/.myapp
-  ```
-- **Wrapping package commands**: Alias to customize behavior:
-  ```bash
-  # In [profile]
-  alias myapp-setup="MYAPP_DATA=$FLOX_ENV_PROJECT command myapp-setup"
-  ```
-
-**Note**: `uv` is installed in the Flox environment, not inside the venv. We use `uv pip install --python "$venv/bin/python"` so that `uv` targets the venv's Python interpreter.
-
-## 18b C/C++ Development Environments
-- **Package Names**: `gbenchmark` not `benchmark`, `catch2_3` for Catch2, `gcc13`/`clang_18` for specific versions
-- **System Constraints**: Linux-only tools need explicit systems: `valgrind.systems = ["x86_64-linux", "aarch64-linux"]`
-- **Essential Groups**: Separate `compilers`, `build`, `debug`, `testing`, `libraries` groups prevent conflicts
-- **Core Stack**: gcc13/clang_18, cmake/ninja/make, gdb/lldb, boost/eigen/fmt/spdlog, gtest/catch2/gbenchmark
-- **libstdc++ Access**: ALWAYS include `gcc-unwrapped` for C++ stdlib headers/libs (gcc alone doesn't expose them):
-```toml
-gcc-unwrapped.pkg-path = "gcc-unwrapped"
-gcc-unwrapped.priority = 5  # Lower priority to avoid conflicts
-gcc-unwrapped.pkg-group = "libraries"
-```
-
-## 18c Node.js Development Environments
-- **Package managers**: Install `nodejs` (includes npm); add `yarn` or `pnpm` separately if needed
-- **Version pinning**: Use `version = "^20.0"` for LTS, or exact versions for reproducibility
-- **Global tools pattern**: Use `npx` for one-off tools, install commonly-used globals in manifest
-- **Service pattern**: Always specify host/port for network services:
-  ```toml
-  [services.dev-server]
-  command = '''exec npm run dev -- --host "$DEV_HOST" --port "$DEV_PORT"'''
-  ```
-
-## 18d CUDA Development Environments
-
-### Prerequisites & Authentication
-- Sign up for early access at https://flox.dev, authenticate with `flox auth login`
-- **Linux-only**: CUDA packages only work on `["aarch64-linux", "x86_64-linux"]`
-- All CUDA packages are prefixed with `flox-cuda/` in the catalog
-
-### Package Discovery
-```bash
-flox search cudatoolkit --all | grep flox-cuda
-flox search nvcc --all | grep 12_8              # Specific versions
-flox show flox-cuda/cudaPackages.cudatoolkit    # All available versions
-```
-
-### Essential CUDA Packages
-| Package Pattern | Purpose | Example |
-|-----------------|---------|---------|
-| `cudaPackages_X_Y.cudatoolkit` | Main CUDA Toolkit | `cudaPackages_12_8.cudatoolkit` |
-| `cudaPackages_X_Y.cuda_nvcc` | NVIDIA C++ Compiler | `cudaPackages_12_8.cuda_nvcc` |
-| `cudaPackages.cuda_cudart` | CUDA Runtime API | `cuda_cudart` |
-| `cudaPackages_X_Y.libcublas` | Linear algebra | `cudaPackages_12_8.libcublas` |
-| `cudaPackages_X_Y.cudnn_9_11` | Deep neural networks | `cudaPackages_12_8.cudnn_9_11` |
-
-### Critical: Conflict Resolution
-**CUDA packages have LICENSE file conflicts requiring explicit priorities:**
-```toml
-[install]
-cuda_nvcc.pkg-path = "flox-cuda/cudaPackages_12_8.cuda_nvcc"
-cuda_nvcc.systems = ["aarch64-linux", "x86_64-linux"]
-cuda_nvcc.priority = 1                    # Highest priority
-
-cuda_cudart.pkg-path = "flox-cuda/cudaPackages.cuda_cudart"
-cuda_cudart.systems = ["aarch64-linux", "x86_64-linux"]
-cuda_cudart.priority = 2
-
-cudatoolkit.pkg-path = "flox-cuda/cudaPackages_12_8.cudatoolkit"
-cudatoolkit.systems = ["aarch64-linux", "x86_64-linux"]
-cudatoolkit.priority = 3                  # Lower for LICENSE conflicts
-
-gcc.pkg-path = "gcc"
-gcc-unwrapped.pkg-path = "gcc-unwrapped"  # For libstdc++
-gcc-unwrapped.priority = 5
-```
-
-### Cross-Platform GPU Development
-Dual CUDA/CPU packages for portability (Linux gets CUDA, macOS gets CPU fallback):
-```toml
-[install]
-## CUDA packages (Linux only)
-cuda-pytorch.pkg-path = "flox-cuda/python3Packages.torch"
-cuda-pytorch.systems = ["x86_64-linux", "aarch64-linux"]
-cuda-pytorch.priority = 1
-
-## Non-CUDA packages (macOS + Linux fallback)
-pytorch.pkg-path = "python313Packages.pytorch"
-pytorch.systems = ["x86_64-darwin", "aarch64-darwin"]
-pytorch.priority = 6                     # Lower priority
-```
-
-### GPU Detection Pattern
-**Dynamic CPU/GPU package installation in hooks:**
-```bash
-setup_gpu_packages() {
-  venv="$FLOX_ENV_CACHE/venv"
-  
-  if [ ! -f "$FLOX_ENV_CACHE/.deps_installed" ]; then
-    if lspci 2>/dev/null | grep -E 'NVIDIA|AMD' > /dev/null; then
-      echo "GPU detected, installing CUDA packages"
-      uv pip install --python "$venv/bin/python" \
-        torch torchvision --index-url https://download.pytorch.org/whl/cu129
-    else
-      echo "No GPU detected, installing CPU packages"
-      uv pip install --python "$venv/bin/python" \
-        torch torchvision --index-url https://download.pytorch.org/whl/cpu
-    fi
-    touch "$FLOX_ENV_CACHE/.deps_installed"
-  fi
-}
-```
-
-### Best Practices
-- **Always use priority values**: CUDA packages have predictable conflicts
-- **Version consistency**: Use specific versions (e.g., `_12_8`) for reproducibility
-- **Modular design**: Split base CUDA, math libs, debugging into separate environments
-- **Test compilation**: Verify `nvcc hello.cu -o hello` works after setup
-- **Platform constraints**: Always include `systems = ["aarch64-linux", "x86_64-linux"]`
-
-### Common CUDA Gotchas
-- **CUDA toolkit ≠ complete toolkit**: Add libraries (libcublas, cudnn) as needed
-- **License conflicts**: Every CUDA package may need explicit priority
-- **No macOS support**: Use Metal alternatives on Darwin
-- **Version mixing**: Don't mix CUDA versions; use consistent `_X_Y` suffixes
-
-### Complete Example
-```toml
-[install]
-cuda_nvcc.pkg-path = "flox-cuda/cudaPackages_12_8.cuda_nvcc"
-cuda_nvcc.priority = 1
-cuda_cudart.pkg-path = "flox-cuda/cudaPackages.cuda_cudart"
-cuda_cudart.priority = 2
-libcublas.pkg-path = "flox-cuda/cudaPackages.libcublas"
-torch.pkg-path = "flox-cuda/python3Packages.torch"
-python313Full.pkg-path = "python313Full"
-uv.pkg-path = "uv"
-gcc.pkg-path = "gcc"
-gcc-unwrapped.pkg-path = "gcc-unwrapped"
-gcc-unwrapped.priority = 5
-
-[vars]
-CUDA_VERSION = "12.8"
-PYTORCH_CUDA_ALLOC_CONF = "max_split_size_mb:128"
-
-[hook]
-setup_cuda_venv() {
-  venv="$FLOX_ENV_CACHE/venv"
-  [ ! -d "$venv" ] && uv venv "$venv" --python python3
-  [ -f "$venv/bin/activate" ] && source "$venv/bin/activate"
-}
-```
-
-## 19 **Platform-Specific Pattern**:
-```toml
-# Darwin-specific frameworks and tools
-IOKit.pkg-path = "darwin.apple_sdk.frameworks.IOKit"
-IOKit.systems = ["x86_64-darwin", "aarch64-darwin"]
-CoreFoundation.pkg-path = "darwin.apple_sdk.frameworks.CoreFoundation"
-CoreFoundation.priority = 2
-CoreFoundation.systems = ["x86_64-darwin", "aarch64-darwin"]
-
-# Platform-preferred compilers (remove constraints if cross-platform needed)
-gcc.pkg-path = "gcc"
-gcc.systems = ["x86_64-linux", "aarch64-linux"]
-clang.pkg-path = "clang" 
-clang.systems = ["x86_64-darwin", "aarch64-darwin"]
-
-# Darwin GNU compatibility layer (Darwin's built-ins are ancient/limited)
-coreutils.pkg-path = "coreutils"
-coreutils.systems = ["x86_64-darwin", "aarch64-darwin"]
-gnumake.pkg-path = "gnumake"
-gnumake.systems = ["x86_64-darwin", "aarch64-darwin"] 
-gnused.pkg-path = "gnused"
-gnused.systems = ["x86_64-darwin", "aarch64-darwin"]
-gawk.pkg-path = "gawk"
-gawk.systems = ["x86_64-darwin", "aarch64-darwin"]
-bashInteractive.pkg-path = "bashInteractive"
-bashInteractive.systems = ["x86_64-darwin", "aarch64-darwin"]
-```
-
-**Note**: CUDA is Linux-only (see §18d); use Metal-accelerated packages on Darwin when available.
