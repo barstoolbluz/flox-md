@@ -55,7 +55,6 @@
 - **Edit manifests programmatically** → §7 (Non-Interactive Editing)
 
 ### Anti-Patterns to Avoid
-- **What NOT to do** → §12b (Common Anti-Patterns)
 - **Common pitfalls** → §4b (Common Pitfalls)
 
 ## 0 Working Style & Structure
