@@ -8,11 +8,11 @@
 - **Understand the manifest structure** → §4 (Manifest Structure)
 
 ### Common Development Tasks
-- **Set up Python with virtual environments** → §16a (Python patterns)
-- **Set up C/C++ development** → §16b (C/C++ environments)
-- **Set up Node.js projects** → §16c (Node.js patterns)
-- **Set up CUDA/GPU development** → §16d (CUDA environments)
-- **Handle package conflicts** → §5 (priority/pkg-group), §15 (Quick Tips)
+- **Set up Python with virtual environments** → §18a (Python patterns)
+- **Set up C/C++ development** → §18b (C/C++ environments)
+- **Set up Node.js projects** → §18c (Node.js patterns)
+- **Set up CUDA/GPU development** → §18d (CUDA environments)
+- **Handle package conflicts** → §5 (priority/pkg-group), §17 (Quick Tips)
 
 ### Services & Background Processes
 - **Run a database or web server** → §8 (Services)
@@ -32,12 +32,12 @@
 - **Design environments for both** → §12 (Dual-purpose environments)
 
 ### Platform-Specific
-- **Handle Linux-only packages** → §5 (systems attribute), §16d (CUDA)
-- **Handle macOS-specific frameworks** → §17 (Platform-Specific Pattern)
-- **Support multiple platforms** → §16d (Cross-platform GPU), §17 (Platform patterns)
+- **Handle Linux-only packages** → §5 (systems attribute), §18d (CUDA)
+- **Handle macOS-specific frameworks** → §19 (Platform-Specific Pattern)
+- **Support multiple platforms** → §18d (Cross-platform GPU), §19 (Platform patterns)
 
 ### Troubleshooting
-- **Fix package conflicts** → §5 (priority), §15 (Conflicts tip)
+- **Fix package conflicts** → §5 (priority), §17 (Conflicts tip)
 - **Debug hooks not working** → §6 (Best Practices), §0 (Working Style)
 - **Understand build vs runtime** → §9.1 (Build hooks don't run)
 - **Fix service startup issues** → §8 (Service patterns)
@@ -45,8 +45,12 @@
 ### Advanced Topics
 - **Create multi-stage builds** → §9.5 (Multi-Stage Examples)
 - **Minimize runtime dependencies** → §9.6 (Trimming Dependencies)
-- **Containerize environments** → §13 (Containerization)
 - **Edit manifests programmatically** → §7 (Non-Interactive Editing)
+
+### Deployment Patterns
+- **Build OCI container images** → §13 (Containerization)
+- **Automate with CI/CD pipelines** → §14 (CI/CD Integration)
+- **Deploy imageless Kubernetes pods** → §15 (Kubernetes Deployment)
 
 ### Anti-Patterns to Avoid
 - **What NOT to do** → §13b (Common Anti-Patterns)
@@ -170,7 +174,7 @@ example.priority = 3                        # Optional: resolve file conflicts (
 - Resolves file conflicts between packages
 - Default: 5
 - Lower number = higher priority wins conflicts
-- **Critical for CUDA packages** (see §16d)
+- **Critical for CUDA packages** (see §18d)
 
 
 ### Practical Examples
@@ -642,7 +646,7 @@ command = "..."
 - Document what the environment provides/expects
 - Keep hooks fast and idempotent
 
-**CUDA layering example:** Layer debugging tools (`flox activate -r team/cuda-debugging`) on base CUDA environment for ad-hoc development (see §16d).
+**CUDA layering example:** Layer debugging tools (`flox activate -r team/cuda-debugging`) on base CUDA environment for ad-hoc development (see §18d).
 
 ### Creating Composition-Optimized Environments
 **Design for clean merging at build time:**
@@ -724,9 +728,10 @@ flox containerize --tag v1.0 -f - | docker load
 
 ### How Containers Behave
 **Containers activate the Flox environment on startup** (like `flox activate`):
-- **Interactive**: `docker run -it <image>` → Bash shell with environment activated
-- **Non-interactive**: `docker run <image> <cmd>` → Runs command with environment activated (like `flox activate -- <cmd>`)
+- **Interactive**: `docker run -it <image>` → Bash **subshell** with environment activated after hook runs
+- **Non-interactive**: `docker run <image> <cmd>` → Runs command **without subshell** (like `flox activate -- <cmd>`)
 - All packages, variables, and hooks are available inside the container
+- Flox sets an entrypoint that activates the environment; `cmd` runs inside that activation
 
 ### Command Options
 ```bash
@@ -739,20 +744,22 @@ flox containerize
 ```
 
 ### Manifest Configuration
-Configure container in `[containerize.config]` (experimental):
+
+**Warning**: `[containerize.config]` is **experimental** and its behavior is subject to change.
+
+Configure container in `[containerize.config]`:
 
 ```toml
 [containerize.config]
 user = "appuser"                    # Username or uid:gid format
-exposed-ports = ["8080/tcp"]        # Ports to expose (tcp/udp/default:tcp)
-cmd = ["python", "app.py"]          # Command to run (receives activated env)
+                                     # Auto-creates /etc/passwd and /etc/groups entries (no manual useradd needed)
+exposed-ports = ["8080/tcp"]        # Ports to expose (tcp/udp; default: tcp)
+cmd = ["python", "app.py"]          # Default command (overridable at container runtime; receives activated env)
 volumes = ["/data", "/config"]      # Mount points for persistent data
-working-dir = "/app"                # Working directory
-labels = { version = "1.0" }        # Arbitrary metadata
-stop-signal = "SIGTERM"             # Signal to stop container
+working-dir = "/app"                # Working directory (overridable at container runtime)
+labels = { version = "1.0" }        # Arbitrary metadata (must follow OCI annotation rules)
+stop-signal = "SIGTERM"             # Signal to stop container (must follow OCI annotation rules)
 ```
-
-**Note**: Flox sets an entrypoint that activates the environment, then runs `cmd` inside that activation.
 
 ### Complete Workflow Example
 ```bash
@@ -774,10 +781,15 @@ docker run -p 5000:5000 -v $(pwd):/app <container-id>
 ```
 
 ### Platform-Specific Notes
-**macOS**: 
-- Requires docker/podman runtime (uses proxy container for builds)
-- May prompt for file sharing permissions
-- Creates `flox-nix` volume for caching (safe to remove when not building: `docker volume rm flox-nix`)
+**macOS**:
+- **Requires** docker/podman runtime (uses proxy container for builds)
+- May prompt for file sharing permissions during first build
+- Creates `flox-nix` volume for caching build artifacts
+- **Cleanup**: Remove volume when no `flox containerize` command is running:
+  ```bash
+  docker volume rm flox-nix    # for Docker
+  podman volume rm flox-nix    # for Podman
+  ```
 
 **Linux**: Direct image creation without proxy
 
@@ -810,8 +822,512 @@ flox containerize --tag production
 flox containerize -r team/python-ml --tag latest
 ```
 
+### Container Execution Patterns
 
-## 14 Environment Variable Convention Example
+**Interactive with automatic cleanup**:
+```bash
+$ flox init
+$ flox install hello
+$ flox containerize -f - | docker load
+$ docker run --rm -it <container-id>
+[floxenv] $ hello
+Hello, world!
+```
+
+**Non-interactive command** (no subshell):
+```bash
+$ flox containerize -f - | docker load
+$ docker run <container-id> hello
+Hello, world
+```
+
+**Tagged container access**:
+```bash
+$ flox containerize --tag v1 -f - | docker load
+$ docker run --rm -it <container-name>:v1
+[floxenv] $ hello
+Hello, world!
+```
+
+**Custom docker path** (when docker not in PATH):
+```bash
+$ flox containerize -f - | /path/to/docker load
+```
+
+**Kubernetes deployment**: For deploying Flox environments to Kubernetes clusters without building images, see §15 (Kubernetes Deployment).
+
+## 14 CI/CD Integration
+
+Same environment locally and in CI. Cross-platform, reproducible by default. Commit `.flox/env/manifest.toml` and `.flox/env.json` to source control.
+
+### Platform Support
+
+| Platform | Method | Usage |
+|----------|--------|-------|
+| GitHub Actions | `flox/install-flox-action` + `flox/activate-action` | Declarative |
+| CircleCI | `flox/orb@1.0.0` | `flox/install` + `flox/activate` |
+| GitLab | `ghcr.io/flox/flox:latest` container | Direct CLI |
+| Generic | Install from flox.dev | Shell scripts |
+
+### GitHub Actions
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flox/install-flox-action@v2
+      - uses: flox/activate-action@v1
+        with:
+          command: npm run build
+```
+
+### CircleCI
+```yaml
+orbs:
+  flox: flox/orb@1.0.0
+jobs:
+  build:
+    steps:
+      - checkout
+      - flox/install
+      - flox/activate:
+          command: npm run build
+```
+
+### GitLab / Generic Shell
+```yaml
+# .gitlab-ci.yml
+image: ghcr.io/flox/flox:latest
+build:
+  script:
+    - eval "$(flox activate)"
+    - npm run build
+```
+
+**Shell pattern** (complex scripts, loops):
+```bash
+eval "$(flox activate)"
+# All subsequent commands run in environment
+```
+
+**Subprocess pattern** (single commands):
+```bash
+flox activate -- npm run build
+```
+
+### Authentication (Private Environments)
+
+**When required:** `flox activate -r team/private`, `flox publish`, `flox push/pull --remote`
+
+**Setup:** Create service credentials at https://flox.dev/docs/tutorials/ci-cd/, store as `FLOXHUB_CLIENT_ID` and `FLOXHUB_CLIENT_SECRET` secrets.
+
+**GitHub Actions:**
+```yaml
+- name: Auth FloxHub
+  run: |
+    export FLOX_FLOXHUB_TOKEN=$(
+      curl --fail --request POST \
+        --url https://auth.flox.dev/oauth/token \
+        --header 'content-type: application/x-www-form-urlencoded' \
+        --data "client_id=${{ secrets.FLOXHUB_CLIENT_ID }}" \
+        --data "audience=https://hub.flox.dev/api" \
+        --data "grant_type=client_credentials" \
+        --data "client_secret=${{ secrets.FLOXHUB_CLIENT_SECRET }}" \
+          | jq -e .access_token -r)
+    flox auth status
+    echo "FLOX_FLOXHUB_TOKEN=$FLOX_FLOXHUB_TOKEN" >> $GITHUB_ENV
+```
+
+**Critical:** `audience` must be exactly `https://hub.flox.dev/api`. Token persists via `$GITHUB_ENV` (Actions), `$BASH_ENV` (CircleCI), or `variables:` (GitLab).
+
+### Best Practices
+- Pin versions in CI: `version = "1.2.3"` not `"^1.2"`
+- Disable metrics: `FLOX_DISABLE_METRICS="true"`
+- Cache `~/.cache/flox` keyed on manifest checksum
+- Use `sandbox = "pure"` for published packages (§9.2)
+- Multi-arch: Same manifest works x86_64/arm64; use matrix builds
+- Auth per-job: Tokens expire; don't cache between jobs
+
+### Common Patterns
+```yaml
+# Containerize and push
+- flox/activate-action:
+    command: flox containerize --runtime docker --tag v1.0
+
+# Multi-platform
+strategy:
+  matrix:
+    os: [ubuntu-latest, macos-latest]
+
+# Conditional publish (main branch only)
+if: github.ref == 'refs/heads/main'
+```
+
+### Common Gotchas
+- GitHub Actions: Must `flox/install-flox-action` before `flox/activate-action`
+- Auth: Token required BEFORE accessing private envs; fails silently otherwise
+- Token persistence: Use platform-specific env export (`$GITHUB_ENV`, `$BASH_ENV`)
+- Manifest changes: Commit `.flox/env.json` after `flox install`; CI doesn't auto-update
+- Services: Use `flox activate -s` for background services (§8)
+- Build hooks don't run during `flox build` (§9.1)
+
+## 15 Kubernetes Deployment
+
+Deploy Flox environments to Kubernetes clusters using imageless containers - from local testing through production.
+
+### Overview
+
+Instead of building and pushing container images, reference Flox environments directly in Pod specs. The Kubernetes cluster pulls environments from FloxHub at pod start. This works identically across local (kind/colima/k3s), CI, and production clusters.
+
+**Benefits**:
+- No image rebuild cycles - update environment, redeploy pod
+- FloxHub as source of truth - centralized package versions, audit trail
+- Consistency guarantee - same dependencies in dev, CI, and production
+- Fast iteration - install package to environment → redeploy → new generation live
+- Production-ready - same pattern from laptop to prod cluster
+
+### Prerequisites
+
+**Install Flox on cluster nodes**:
+```bash
+# See https://flox.dev/docs/install for your platform
+```
+
+**Install runtime shim** (automatic):
+```bash
+# Run on each node (or in node provisioning script)
+sudo flox activate -r flox/containerd-shim-flox-installer --trust
+```
+
+**Manual installation** (k3s, custom containerd, or if automatic fails):
+```bash
+# Create environment with shim
+mkdir containerd-shim-flox && cd containerd-shim-flox
+flox init -b
+flox install containerd-shim-flox-2x  # Use -17 for containerd 1.7
+
+# Symlink to system path
+sudo ln -s $PWD/.flox/run/x86_64-linux.containerd-shim-flox.run/bin/containerd-shim-flox-v2 \
+  /usr/local/bin/containerd-shim-flox-v2
+```
+
+**Configure containerd** (add to `/etc/containerd/config.toml`):
+```toml
+# For containerd 2.x (version = 2)
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.flox]
+    runtime_path = "/usr/local/bin/containerd-shim-flox-v2"
+    runtime_type = "io.containerd.runc.v2"
+    pod_annotations = [ "flox.dev/*" ]
+    container_annotations = [ "flox.dev/*" ]
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.flox.options]
+    SystemdCgroup = true
+
+# For containerd 1.x (version = 3), use:
+# [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.flox]
+```
+
+```bash
+# Restart containerd
+sudo systemctl restart containerd
+# For k3s: sudo systemctl restart k3s
+```
+
+**Verify shim installation**:
+```bash
+containerd config dump | grep -A 10 "flox"
+```
+
+### Kubernetes Setup
+
+**Label nodes** that have Flox runtime installed:
+```bash
+kubectl label node <node-name> "flox.dev/enabled=true"
+```
+
+**Create RuntimeClass**:
+```yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: flox
+handler: flox
+scheduling:
+  nodeSelector:
+    flox.dev/enabled: "true"
+```
+
+```bash
+kubectl apply -f RuntimeClass.yaml
+```
+
+### Pod Configuration
+
+**Basic Pod spec** using Flox environment:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+  annotations:
+    flox.dev/environment: "owner/myenv"      # FloxHub environment
+    # flox.dev/disable-metrics: "true"       # Optional: disable metrics
+spec:
+  runtimeClassName: flox                     # Required: use Flox runtime
+  containers:
+    - name: app
+      image: flox/empty:1.0.0                # Required stub (49 bytes)
+      command: ["python", "app.py"]          # Runs inside Flox environment
+```
+
+**Deployment manifest** (production pattern):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        flox.dev/environment: "myorg/prod-env@12"  # Pin to generation
+    spec:
+      runtimeClassName: flox
+      containers:
+        - name: app
+          image: flox/empty:1.0.0
+          command: ["python", "-m", "flask", "run"]
+          ports:
+            - containerPort: 5000
+```
+
+### Development Workflow
+
+**Local → CI → Production pattern**:
+
+**1. Develop and test locally**:
+```bash
+flox init
+flox install python311 flask requests
+flox activate -- python app.py  # Test locally first
+```
+
+**2. Push to FloxHub** (becomes source of truth):
+```bash
+flox push
+# Environment available as owner/myenv
+# FloxHub tracks: packages, versions, variables, scripts, audit trail
+```
+
+**3. Test in local cluster** (kind/colima/minikube):
+```bash
+kubectl apply -f pod.yaml  # References owner/myenv
+kubectl logs myapp
+```
+
+**4. Deploy to CI cluster**:
+```bash
+# Same Pod spec works in CI cluster
+kubectl --context=ci-cluster apply -f deployment.yaml
+```
+
+**5. Promote to production**:
+```bash
+# Pin to tested generation for production
+# Update annotation: flox.dev/environment: "owner/myenv@12"
+kubectl --context=prod-cluster apply -f deployment.yaml
+```
+
+**6. Iterate without rebuilding images**:
+```bash
+# Add dependency
+flox install -r owner/myenv boto3
+
+# This creates new generation (e.g., @13) automatically
+# Update deployment to use new generation
+kubectl rollout restart deployment/myapp
+```
+
+**No Docker build, no registry push, no image tagging** - environment updates propagate through FloxHub.
+
+### Generation Pinning Strategies
+
+**Latest generation** (development/staging):
+```yaml
+flox.dev/environment: "owner/myenv"  # Always pulls latest
+```
+
+**Pinned generation** (production):
+```yaml
+flox.dev/environment: "owner/myenv@12"  # Immutable, reproducible
+```
+
+**Digest pinning** (maximum reproducibility):
+```yaml
+flox.dev/environment: "owner/myenv@sha256:abc123..."
+```
+
+### Testing Multiple Versions
+
+A/B test dependency versions simultaneously:
+```yaml
+# deployment-variant-a.yaml
+metadata:
+  annotations:
+    flox.dev/environment: "owner/ml-model@10"  # torch 2.0
+
+# deployment-variant-b.yaml
+metadata:
+  annotations:
+    flox.dev/environment: "owner/ml-model@11"  # torch 2.1
+```
+
+Both deployments share cached dependencies on nodes; only diffs are pulled.
+
+### CVE Remediation Workflow
+
+**1. Identify affected environments**:
+```bash
+# Query FloxHub for environments with vulnerable package
+flox search --environment owner/myenv openssl@1.1.1
+```
+
+**2. Update environment**:
+```bash
+flox install -r owner/myenv openssl@3.0.0
+# Creates new generation with patched package
+```
+
+**3. Test in non-production**:
+```bash
+# Update staging deployment to new generation
+kubectl --context=staging patch deployment myapp -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"flox.dev/environment":"owner/myenv@13"}}}}}'
+```
+
+**4. Roll out to production**:
+```bash
+# After validation, update production
+kubectl --context=prod patch deployment myapp -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"flox.dev/environment":"owner/myenv@13"}}}}}'
+```
+
+**5. Rollback if needed** (instant, no image rebuild):
+```bash
+kubectl --context=prod patch deployment myapp -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"flox.dev/environment":"owner/myenv@12"}}}}}'
+```
+
+### How It Works
+
+**Pod startup flow**:
+1. Pod spec sets `runtimeClassName: flox` and `flox.dev/environment` annotation
+2. Kubelet routes pod to Flox runtime shim via RuntimeClass
+3. Shim pulls environment from FloxHub (if not cached on node)
+4. Shim mounts dependencies from `/nix/store` into container
+5. Shim wraps container command to run in Flox activation context
+6. Container starts with `flox/empty:1.0.0` stub image (49 bytes)
+7. Command executes inside Flox environment (like `flox activate -- cmd`)
+
+**Node caching**: Dependencies cached in `/nix/store` are reused across all pods on that node. First pod pulls packages; subsequent pods with same environment start instantly.
+
+### Troubleshooting
+
+**Pods stuck in ContainerCreating**:
+```bash
+# Verify shim registered with containerd
+containerd config dump | grep -A 10 "flox"
+
+# Check node has proper label
+kubectl get nodes -L flox.dev/enabled
+
+# View containerd logs
+journalctl -u containerd -n 50
+
+# For k3s
+journalctl -u k3s -n 50
+```
+
+**Verify RuntimeClass exists**:
+```bash
+kubectl get runtimeclass flox -o yaml
+```
+
+**Check pod events**:
+```bash
+kubectl describe pod myapp
+# Look for events mentioning runtime or containerd
+```
+
+**Configuration conflicts** (NVIDIA toolkit, etc.):
+```bash
+# Check if imported configs override Flox settings
+containerd config dump | grep imports
+# If present, manually add Flox config to imported files
+```
+
+**Environment pull failures**:
+```bash
+# Check FloxHub authentication on node
+ssh node-name
+flox auth status
+
+# Verify environment exists
+flox show owner/myenv
+```
+
+### Upgrading
+
+**Upgrade Flox runtime shim**:
+```bash
+# Run on each node
+sudo flox activate -r flox/containerd-shim-flox-installer --trust
+
+# Restart existing pods to use new shim
+kubectl rollout restart deployment/myapp
+```
+
+**Upgrade Flox** on nodes:
+```bash
+# See https://flox.dev/docs/install for platform-specific upgrade
+```
+
+**Note**: Pods must be restarted to use upgraded shim version.
+
+### Production Considerations
+
+**Node provisioning**: Include shim installation in node bootstrap scripts or AMIs.
+
+**FloxHub authentication** for private environments:
+```bash
+# On each node, configure service account
+flox auth login --token $FLOXHUB_TOKEN
+```
+
+Store tokens in secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.) and inject during node provisioning.
+
+**Monitoring**: Shim logs to node's containerd logs accessible via `journalctl -u containerd`.
+
+**Security**: RuntimeClass `nodeSelector` prevents pods from scheduling on nodes without Flox runtime.
+
+**Scaling**: `/nix/store` cache is per-node. Consider:
+- Node pool strategies (dedicated pools for Flox workloads)
+- Persistent volumes for `/nix/store` (optional, for faster node replacement)
+
+**Managed Kubernetes differences**:
+- **EKS**: Use launch templates for shim installation; configure IAM for FloxHub access
+- **GKE**: Use node startup scripts; configure workload identity for FloxHub
+- **AKS**: Use VM scale set extensions; configure managed identity for FloxHub
+
+See https://flox.dev/docs/k8s for platform-specific setup guides.
+
+## 16 Environment Variable Convention Example
 
 - Use variables like `POSTGRES_HOST`, `POSTGRES_PORT` to define where services run.
 - These store connection details *separately*:
@@ -823,17 +1339,17 @@ flox containerize -r team/python-ml --tag latest
   ```
 - Use consistent naming across services so the meaning is clear to any system or person reading the variables.
 
-## 15 Quick Tips for [install] Section
-- **Tricky Dependencies**: If we need `libstdc++`, we get this from the `gcc-unwrapped` package, not from `gcc`; if we need to have both in the same environment, we use either package groups or assign priorities. (See **`Conflicts`**, below); also, if user is working with python and requests `uv`, they typically do not mean `uvicorn`; clarify which package user wants. 
-- **Conflicts**: If packages conflict, use different `pkg-group` values or adjust `priority`. **CUDA packages require explicit priorities** (see §16d).
+## 17 Quick Tips for [install] Section
+- **Tricky Dependencies**: If we need `libstdc++`, we get this from the `gcc-unwrapped` package, not from `gcc`; if we need to have both in the same environment, we use either package groups or assign priorities. (See **`Conflicts`**, below); also, if user is working with python and requests `uv`, they typically do not mean `uvicorn`; clarify which package user wants.
+- **Conflicts**: If packages conflict, use different `pkg-group` values or adjust `priority`. **CUDA packages require explicit priorities** (see §18d).
 - **Versions**: Start loose (`"^1.0"`), tighten if needed (`"1.2.3"`)
 - **Platforms**: Only restrict `systems` when package is platform-specific. **CUDA is Linux-only**: `["aarch64-linux", "x86_64-linux"]`
 - **Naming**: Install ID can differ from pkg-path (e.g., `gcc.pkg-path = "gcc13"`)
 - **Search**: Use `flox search` to find correct pkg-paths before installing
 
-## 16 Language-Specific Dev Patterns
+## 18 Language-Specific Dev Patterns
 
-## 16a Python and Python Virtual Environments
+## 18a Python and Python Virtual Environments
   - **venv creation pattern**: Always check existence before activation - `uv venv` may not complete synchronously:
     ```bash
     if [ ! -d "$venv" ]; then
@@ -848,7 +1364,7 @@ flox containerize -r team/python-ml --tag latest
   **uv with venv**: Use `uv pip install --python "$venv/bin/python"` NOT `"$venv/bin/python" -m uv`
   **Service commands**: Use venv Python directly: $FLOX_ENV_CACHE/venv/bin/python not python
 - **Activation**: Always `source "$venv/bin/activate"` before pip/uv operations
-- **PyTorch CUDA**: Install with `--index-url https://download.pytorch.org/whl/cu124` for GPU support (see §16d)
+- **PyTorch CUDA**: Install with `--index-url https://download.pytorch.org/whl/cu124` for GPU support (see §18d)
 - **PyTorch gotcha**: Needs `gcc-unwrapped` for libstdc++.so.6, not just `gcc`
 - **PyTorch CPU/GPU**: Use separate index URLs: `/whl/cpu` vs `/whl/cu124` (don't mix!)
 - **Service scripts**: Must activate venv inside service command, not rely on hook activation
@@ -877,7 +1393,7 @@ flox containerize -r team/python-ml --tag latest
 
 **Note**: `uv` is installed in the Flox environment, not inside the venv. We use `uv pip install --python "$venv/bin/python"` so that `uv` targets the venv's Python interpreter.
 
-## 16b C/C++ Development Environments
+## 18b C/C++ Development Environments
 - **Package Names**: `gbenchmark` not `benchmark`, `catch2_3` for Catch2, `gcc13`/`clang_18` for specific versions
 - **System Constraints**: Linux-only tools need explicit systems: `valgrind.systems = ["x86_64-linux", "aarch64-linux"]`
 - **Essential Groups**: Separate `compilers`, `build`, `debug`, `testing`, `libraries` groups prevent conflicts
@@ -889,7 +1405,7 @@ gcc-unwrapped.priority = 5  # Lower priority to avoid conflicts
 gcc-unwrapped.pkg-group = "libraries"
 ```
 
-## 16c Node.js Development Environments
+## 18c Node.js Development Environments
 - **Package managers**: Install `nodejs` (includes npm); add `yarn` or `pnpm` separately if needed
 - **Version pinning**: Use `version = "^20.0"` for LTS, or exact versions for reproducibility
 - **Global tools pattern**: Use `npx` for one-off tools, install commonly-used globals in manifest
@@ -899,7 +1415,7 @@ gcc-unwrapped.pkg-group = "libraries"
   command = '''exec npm run dev -- --host "$DEV_HOST" --port "$DEV_PORT"'''
   ```
 
-## 16d CUDA Development Environments
+## 18d CUDA Development Environments
 
 ### Prerequisites & Authentication
 - Sign up for early access at https://flox.dev, authenticate with `flox auth login`
@@ -1019,7 +1535,7 @@ setup_cuda_venv() {
 }
 ```
 
-## 17 **Platform-Specific Pattern**:
+## 19 **Platform-Specific Pattern**:
 ```toml
 # Darwin-specific frameworks and tools
 IOKit.pkg-path = "darwin.apple_sdk.frameworks.IOKit"
@@ -1047,4 +1563,4 @@ bashInteractive.pkg-path = "bashInteractive"
 bashInteractive.systems = ["x86_64-darwin", "aarch64-darwin"]
 ```
 
-**Note**: CUDA is Linux-only (see §16d); use Metal-accelerated packages on Darwin when available.
+**Note**: CUDA is Linux-only (see §18d); use Metal-accelerated packages on Darwin when available.
