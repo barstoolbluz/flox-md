@@ -67,8 +67,8 @@ This repository uses **persona-specific branches** for easier navigation:
 - **Deploy imageless Kubernetes pods** → §15 (Kubernetes Deployment)
 
 ### Anti-Patterns to Avoid
-- **What NOT to do** → §13b (Common Anti-Patterns)
 - **Common pitfalls** → §4b (Common Pitfalls)
+- **What NOT to do** → §0 (Working Style), §6 (Best Practices)
 
 ## 0 Working Style & Structure
 - Use **modular, idempotent bash functions** in hooks; idempotency is a prime directive in `[hook]`!
