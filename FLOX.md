@@ -71,7 +71,7 @@ This repository uses **persona-specific branches** for easier navigation:
 - **Common pitfalls** → §4b (Common Pitfalls)
 
 ## 0 Working Style & Structure
-- Use **modular, idempotent bash functions** in hooks
+- Use **modular, idempotent bash functions** in hooks; idempotency is a prime directive in `[hook]`!
 - Never, ever use absolute paths. Flox environments are designed to be reproducible. Use Flox's environment variables (see §2, "Flox Basics") instead
 - I REPEAT: NEVER, EVER USE ABSOLUTE PATHS. Don't do it. Use `$FLOX_ENV` for environment-specific runtime dependencies; use `$FLOX_ENV_PROJECT` for the project directory. See §2 (Flox Basics)
 - Name functions descriptively (e.g., `setup_postgres()`)
