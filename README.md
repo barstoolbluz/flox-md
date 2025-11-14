@@ -1,149 +1,137 @@
-# Flox Documentation Package (flox-md)
+# Flox Quick Reference Guide
 
-A portable, installable package containing the comprehensive Flox environment creation guide (FLOX.md) with convenient reader tools.
+A comprehensive, persona-focused quick reference guide for [Flox](https://flox.dev) - the declarative, reproducible development environment manager.
 
 ## What is this?
 
-This package turns the FLOX.md documentation into an installable Flox package with:
-- Beautiful terminal rendering with `glow`
-- Fast searching with `ripgrep`
-- Interactive section browsing with `fzf`
-- Quick reference card
-- Section shortcuts for common topics
+This repository contains **FLOX.md**, a 1,106-line quick reference covering everything from local development to production deployment with Flox. Instead of one massive document for everyone, we use **persona-specific branches** so you can focus on what matters to you.
 
-## Installation
+## Persona-Specific Branches
 
-Once published, users can install the documentation:
+Checkout the branch that matches your use case:
 
+| Branch | For | Focus |
+|--------|-----|-------|
+| `main` | Everyone | Complete reference (all 1,106 lines) |
+| `building-and-packaging-with-flox` | Build engineers | Packaging, publishing, CI/CD automation |
+| `local-dev-with-flox` | Developers | Python/Node/C++ patterns, local services |
+| `ops-with-flox` | SREs/operators | Production services, K8s, containers |
+| `flox-and-cuda` | CUDA developers | GPU development, conflict resolution |
+| `flox-and-k8s` | K8s engineers | Imageless pods, local testing, GitOps |
+| `flox-and-containers` | Container engineers | OCI images, Docker/Podman, registries |
+
+**Example:**
 ```bash
-flox install barstoolbluz/flox-md
-```
-
-## Usage
-
-After installation, these commands become available:
-
-### Read the Full Guide
-```bash
-flox-md                    # Beautiful rendering with glow
-flox-md --raw              # Raw markdown
-flox-md --bat              # Syntax highlighted
-flox-md --less             # Simple pager
-```
-
-### Jump to Sections
-```bash
-flox-md 9                  # Jump to Build System section
-flox-md python             # Python patterns (section 16a)
-flox-md cuda               # CUDA patterns (section 16c)
-flox-md build              # Build system details
-flox-md service            # Service configuration
-```
-
-### Search Documentation
-```bash
-flox-search venv           # Search for "venv"
-flox-search "pkg-path"     # Search for "pkg-path"
-flox-md --search hook      # Alternative search method
-```
-
-### Browse Interactively
-```bash
-flox-browse                # Interactive section browser with fzf
-flox-md --list             # List all sections
-```
-
-### Quick Reference
-```bash
-flox-quick                 # Display quick reference card
-```
-
-## Building and Publishing
-
-### Build the Package
-
-```bash
+git clone https://github.com/YOUR-USERNAME/flox-md.git
 cd flox-md
-flox activate
-flox build flox-md
+git checkout local-dev-with-flox  # Developer-focused branch
+cat FLOX.md                         # Read the focused guide
 ```
 
-### Test Locally
+## What's Covered?
 
+The guide includes:
+
+- **§0-4**: Working style, configuration, Flox basics, manifest structure, common pitfalls
+- **§5-8**: Package installation, best practices, services, manifest editing
+- **§9-11**: Build system (manifest + Nix builds), publishing to catalogs
+- **§12-15**: Environment composition, containerization, CI/CD, Kubernetes deployment
+- **§16-19**: Environment conventions, quick tips, language-specific patterns (Python, C/C++, Node.js, CUDA), platform-specific guidance
+
+## Quick Start
+
+### For Developers (Python/Node/C++)
 ```bash
-./result-flox-md/bin/flox-md --help
-./result-flox-md/bin/flox-quick
+git checkout local-dev-with-flox
+# Read FLOX.md sections:
+# - §18a: Python virtual environments
+# - §18b: C/C++ development
+# - §18c: Node.js patterns
+# - §8: Running local services
 ```
 
-### Publish to Flox Catalog
-
+### For Build Engineers
 ```bash
-# Ensure you're logged in
-flox auth login
-
-# Commit and push changes
-git add .
-git commit -m "Update flox-md documentation package"
-git push origin main
-
-# Publish to personal namespace
-flox publish flox-md
-
-# Or publish to organization
-flox publish -o <org-name> flox-md
+git checkout building-and-packaging-with-flox
+# Read FLOX.md sections:
+# - §9: Build system (manifest + Nix builds)
+# - §11: Publishing packages
+# - §14: CI/CD integration
 ```
 
-## Package Contents
+### For K8s Engineers
+```bash
+git checkout flox-and-k8s
+# Read FLOX.md sections:
+# - §15: Kubernetes imageless deployment
+# - Links to flox.dev/docs/k8s/* for detailed setup
+```
 
-The package includes:
-- `/bin/flox-md` - Main documentation reader with multiple viewing modes
-- `/bin/flox-search` - Search tool for finding content
-- `/bin/flox-browse` - Interactive section browser
-- `/bin/flox-quick` - Quick reference card
-- `/share/doc/flox-md/FLOX.md` - The documentation itself
+### For CUDA Developers
+```bash
+git checkout flox-and-cuda
+# Read FLOX.md sections:
+# - §18d: CUDA development patterns
+# - Package conflict resolution with priorities
+# - Cross-platform GPU development
+```
 
-## Features
+## Navigation
 
-- **Multiple Viewers**: Choose between glow, bat, or less for reading
-- **Smart Navigation**: Jump directly to sections by number or topic
-- **Fast Search**: Ripgrep-powered searching with context
-- **Interactive Browse**: Use fzf to browse and preview sections
-- **Offline Access**: No internet required once installed
-- **Cross-Platform**: Works on Linux and macOS
+Each branch's FLOX.md includes:
 
-## Why Package Documentation?
+1. **Branch matrix** - Shows all available branches
+2. **Quick navigation guide** - "How do I...?" lookup table
+3. **Numbered sections (§N)** - Easy cross-referencing
+4. **Code examples** - Copy-pasteable patterns
+5. **External links** - Deep dives into Flox docs
 
-1. **Instant Access**: `flox-md` anywhere, anytime
-2. **Version Control**: Pin specific documentation versions
-3. **Offline Friendly**: No internet needed
-4. **Better UX**: Purpose-built reader commands
-5. **Searchable**: Fast grep through examples and patterns
-6. **Portable**: Take your reference guide everywhere
+## File Structure
 
-## Development
-
-To modify the package:
-
-1. Edit `.flox/env/manifest.toml`
-2. Update commands in the `[build.flox-md]` section
-3. Test with `flox build flox-md`
-4. Use the built commands in `./result-flox-md/bin/`
-
-## Tips
-
-- Install `glow` for the best reading experience
-- Use `flox-browse` for exploring unfamiliar sections
-- `flox-quick` is perfect for quick command lookups
-- Search supports regex: `flox-search 'pkg.*path'`
+```
+flox-md/
+├── FLOX.md                  # Main guide (varies by branch)
+├── FLOX-OMNIBUS.md         # Original 1,566-line comprehensive version
+├── FLOX_refactor_preserve_structure.md  # 1,194-line refactored version
+└── README.md               # This file
+```
 
 ## Contributing
 
-To improve the documentation or package:
+Improvements welcome! To contribute:
+
 1. Fork this repository
-2. Make your changes
-3. Test thoroughly
-4. Submit a pull request
+2. Create a feature branch
+3. Make your changes to FLOX.md
+4. Test across relevant persona branches
+5. Submit a pull request
+
+### Maintaining Branch Consistency
+
+When updating FLOX.md on `main`:
+1. Make changes on `main` branch
+2. Consider which persona branches need the update
+3. Cherry-pick or merge relevant changes to those branches
+4. Keep branch-specific content focused
+
+## Why Persona Branches?
+
+Different users need different information:
+
+- **Developers** don't need Kubernetes deployment details
+- **K8s engineers** don't need local Python venv patterns
+- **Build engineers** focus on packaging and publishing
+- **CUDA developers** need GPU-specific guidance
+
+Persona branches keep each guide focused and relevant, reducing cognitive load.
+
+## Official Flox Resources
+
+- **Flox Website**: https://flox.dev
+- **Flox Documentation**: https://flox.dev/docs
+- **Flox GitHub**: https://github.com/flox/flox
+- **Kubernetes Integration**: https://flox.dev/docs/k8s
 
 ## License
 
-The documentation and packaging are provided under the same terms as Flox itself.
+This documentation is provided as a community resource for Flox users. See the official Flox project for licensing information.
