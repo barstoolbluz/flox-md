@@ -17,6 +17,7 @@ Checkout the branch that matches your use case:
 | `local-dev-with-flox` | Developers | Python/Node/C++ patterns, local services |
 | `ops-with-flox` | SREs/operators | Production services, K8s, containers |
 | `flox-and-cuda` | CUDA developers | GPU development, conflict resolution |
+| `flox-and-ci-cd` | SREs/operators | Build engineers | DevOps engineers | Container engineers |
 | `flox-and-k8s` | K8s engineers | Imageless pods, local testing, GitOps |
 | `flox-and-containers` | Container engineers | OCI images, Docker/Podman, registries |
 
